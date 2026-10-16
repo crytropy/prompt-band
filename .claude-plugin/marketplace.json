@@ -1,0 +1,13 @@
+{
+  "name": "prompt-band",
+  "owner": {
+    "name": "crytropy"
+  },
+  "description": "輸入框上方的用量與快取倒數資訊列",
+  "plugins": [
+    {
+      "name": "prompt-band",
+      "source": "./"
+    }
+  ]
+}

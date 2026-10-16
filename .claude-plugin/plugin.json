@@ -1,0 +1,10 @@
+{
+  "name": "prompt-band",
+  "displayName": "輸入框資訊列",
+  "version": "0.1.2",
+  "description": "輸入框上方的一列資訊：左邊是用量（Context、5 小時、每週），右邊是主對話 1 小時快取的倒數。",
+  "author": {
+    "name": "crytropy"
+  },
+  "types": "./types/index.d.ts"
+}
