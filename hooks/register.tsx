@@ -145,15 +145,11 @@ export const register: Register = on => {
     if (sent !== null) {
       const left = sent + TTL_MS - (await $.clock.now())
       if (left <= 0) {
-        const cell = ` 快取已過期 ${mmss(-left)} `
-        const note = ' 下一句會重新計算整段對話'
-        cacheText = cell + note
+        const cell = ' 快取已過期 '
+        cacheText = cell
         cache = [
           <Text key="cell" backgroundColor="error" color="inverseText" weight="bold">
             {cell}
-          </Text>,
-          <Text key="note" color="error">
-            {note}
           </Text>,
         ]
       } else {
