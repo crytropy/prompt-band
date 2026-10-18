@@ -96,8 +96,8 @@ test('usage on the left, cache countdown on the right, warns at 5 minutes, red w
   await clock.advance(5 * MIN)
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount(band(surface))
-    expect(await ui.find({ type: 'Text', text: /快取已過期/ })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: /重新計算/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: ' 快取已過期 ' })).toBeDefined()
+    expect(await ui.find({ text: /重新計算/ })).toBeUndefined()
     expect(await ui.find({ type: 'Text', text: /Context/ })).toBeDefined()
     await ui.unmount()
   }
