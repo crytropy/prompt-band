@@ -3,6 +3,22 @@
 
 輸入框上方的一列資訊：左邊是用量（Context、5 小時、每週），右邊是主對話 1 小時快取的倒數。
 
+```text
+☂ Showers 67% 134.4k/200k ▲ +98.3k  ·  5h 30% (resets in 2h10m)  ·  Week 12%     快取剩 52:13
+```
+
+Context 用天氣表示有多滿，後面是用掉的 token／整個視窗，和上一輪多用了多少（▲ 變多、▼ 變少）。終端機太窄時，▲ 那段會先藏起來。
+
+| 用量 | 天氣 |
+|---|---|
+| 未滿 25% | ☀ Clear |
+| 25–49% | ☁ Cloudy |
+| 50–74% | ☂ Showers |
+| 75–89% | ☇ Storm |
+| 90% 以上 | ↯ Compact soon |
+
+Context 的天氣顯示參考 Anthropic 的 [Token Weather](https://github.com/anthropics/claude-code-playground/tree/main/claude-code/mods/token-weather)（Apache-2.0）。
+
 ## 安裝（本機）
 
 ```

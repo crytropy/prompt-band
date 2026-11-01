@@ -58,7 +58,8 @@ test('usage on the left, cache countdown on the right, warns at 5 minutes, red w
 
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount(band(surface))
-    expect((await ui.find({ type: 'Text', text: /Context/ }))?.text).toBe('Context 30%')
+    expect((await ui.find({ type: 'Text', text: /Cloudy/ }))?.text).toBe('☁ Cloudy 30%')
+    expect(await ui.find({ type: 'Text', text: ' 60k/200k' })).toBeDefined()
     expect((await ui.find({ type: 'Text', text: /5h/ }))?.text).toBe('5h 85% (resets in 1h30m)')
     expect(await ui.find({ text: /快取/ })).toBeUndefined()
     expect(await ui.find({ type: 'Text', text: 'beneath' })).toBeDefined()
@@ -98,7 +99,7 @@ test('usage on the left, cache countdown on the right, warns at 5 minutes, red w
     const ui = await $.ui.mount(band(surface))
     expect(await ui.find({ type: 'Text', text: ' 快取已過期 ' })).toBeDefined()
     expect(await ui.find({ text: /重新計算/ })).toBeUndefined()
-    expect(await ui.find({ type: 'Text', text: /Context/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /Cloudy/ })).toBeDefined()
     await ui.unmount()
   }
 
@@ -143,7 +144,7 @@ test('5h and Week keep the last figures across sessions until a measurement brin
   // A measurement without rate limits leaves them alone.
   await $.session.measure({ context: { window: 200000, tokens: 20000, percent: 10 }, rateLimits: [], changed: ['context'] })
   ui = await $.ui.mount(band('desktop'))
-  expect((await ui.find({ type: 'Text', text: /Context/ }))?.text).toBe('Context 10%')
+  expect((await ui.find({ type: 'Text', text: /Clear/ }))?.text).toBe('☀ Clear 10%')
   expect((await ui.find({ type: 'Text', text: /5h/ }))?.text).toBe('5h 40% (resets in 1h30m)')
   await ui.unmount()
 
@@ -166,5 +167,47 @@ test('5h and Week keep the last figures across sessions until a measurement brin
   ui = await $.ui.mount(band('desktop'))
   expect((await ui.find({ type: 'Text', text: /5h/ }))?.text).toBe('5h --')
   expect((await ui.find({ type: 'Text', text: /Week/ }))?.text).toBe('Week 13%')
+  await ui.unmount()
+})
+
+test('context reads as Token Weather: the last turn growth, no trend when narrow', async ($, on) => {
+  mock.clock(on, { now: T0 })
+  mock.store(on)
+  on('session.start', (_$, e) => ({ cwd: e.cwd }))
+  on('session.id', () => ({ value: 'session-3' }) as any)
+  on('session.usage', () => ({ value: { startedAt: 0, context: { window: 200000 }, rateLimits: [] } }))
+  on('session.measure', (_$, e) => ({ changed: e.changed }))
+  on('ui.render', ($, e) => {
+    const { Text } = $.ui.resolve(e)
+    return <Text>beneath</Text>
+  })
+  on('ui.invalidate', () => ({ value: undefined }) as any)
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+
+  const measure = (tokens: number, changed: ('context' | 'rateLimits')[] = ['context']) =>
+    $.session.measure({ context: { window: 200000, tokens, percent: (tokens / 200000) * 100 }, rateLimits: [], changed })
+
+  await measure(20000)
+  await measure(80000)
+  // A measurement for the limits alone adds no reading.
+  await measure(80000, ['rateLimits'])
+  await measure(160000)
+
+  let ui = await $.ui.mount(band('terminal', 120))
+  expect((await ui.find({ type: 'Text', text: /Storm/ }))?.text).toBe('☇ Storm 80%')
+  expect(await ui.find({ type: 'Text', text: ' 160k/200k' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /[▁▄█]/ })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: ' ▲ +80k' })).toBeDefined()
+  await ui.unmount()
+
+  ui = await $.ui.mount(band('terminal', 45))
+  expect(await ui.find({ type: 'Text', text: /Storm/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /▲/ })).toBeUndefined()
+  await ui.unmount()
+
+  await measure(190000)
+  ui = await $.ui.mount(band('terminal', 120))
+  expect((await ui.find({ type: 'Text', text: /Compact soon/ }))?.text).toBe('↯ Compact soon 95%')
   await ui.unmount()
 })

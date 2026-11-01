@@ -1,6 +1,20 @@
 import { expect, test } from 'claude-code/testing'
 
-import { cellWidth, current, hasLimits, isHot, mergeReading, mmss, percentText, untilText } from './format'
+import {
+  addPoint,
+  cellWidth,
+  current,
+  forecastFor,
+  hasLimits,
+  HISTORY,
+  isHot,
+  mergeReading,
+  mmss,
+  percentText,
+  shortTokens,
+  trendText,
+  untilText,
+} from './format'
 
 test('red only above 80%', async () => {
   expect(isHot(80)).toBe(false)
@@ -60,4 +74,28 @@ test('CJK characters take two cells', async () => {
   expect(cellWidth('Week 12%')).toBe(8)
   expect(cellWidth('快取剩 52:13')).toBe(12)
   expect(cellWidth('，')).toBe(2)
+})
+
+test('Token Weather: forecast bands, trend, short tokens', async () => {
+  expect(forecastFor(0).word).toBe('Clear')
+  expect(forecastFor(25).word).toBe('Cloudy')
+  expect(forecastFor(74).word).toBe('Showers')
+  expect(forecastFor(89).word).toBe('Storm')
+  expect(forecastFor(90).word).toBe('Compact soon')
+
+  const h = [20000, 80000, 160000].reduce((acc, tokens) => addPoint(acc, { tokens, window: 200000 }), [] as { tokens: number; window: number }[])
+  expect(trendText(h)).toBe('▲ +80k')
+  expect(trendText(h.slice(0, 1))).toBe('')
+  expect(trendText([h[2], h[1]])).toBe('▼ 80k')
+  expect(trendText([h[1], h[1]])).toBe('steady')
+
+  let long: { tokens: number; window: number }[] = []
+  for (let i = 1; i <= 15; i++) long = addPoint(long, { tokens: i, window: 100 })
+  expect(long.length).toBe(HISTORY)
+  expect(long[0].tokens).toBe(4)
+
+  expect(shortTokens(134400)).toBe('134.4k')
+  expect(shortTokens(200000)).toBe('200k')
+  expect(shortTokens(1000000)).toBe('1M')
+  expect(shortTokens(512)).toBe('512')
 })

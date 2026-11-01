@@ -1,8 +1,44 @@
 import type { SessionUsage } from 'claude-code'
 
-import type { Limits, Reading } from '../types'
+import type { Limits, Point, Reading } from '../types'
 
 export const RED_AT = 80
+export const HISTORY = 12
+
+// Token Weather's forecast bands, by percent of the window used.
+// Single-width text symbols, not emoji: they line up in every terminal font.
+export const FORECAST = [
+  { upTo: 25, icon: '☀', word: 'Clear', color: 'yellow' },
+  { upTo: 50, icon: '☁', word: 'Cloudy', color: 'cyan' },
+  { upTo: 75, icon: '☂', word: 'Showers', color: 'blue' },
+  { upTo: 90, icon: '☇', word: 'Storm', color: 'magenta' },
+  { upTo: Infinity, icon: '↯', word: 'Compact soon', color: 'error' },
+] as const
+
+export function forecastFor(percent: number): (typeof FORECAST)[number] {
+  return FORECAST.find(f => percent < f.upTo) ?? FORECAST[FORECAST.length - 1]
+}
+
+/** The history with a new reading last, at most HISTORY long. */
+export function addPoint(history: Point[], point: Point): Point[] {
+  return [...history, point].slice(-HISTORY)
+}
+
+/** What the last turn added, as "▲ +98.3k", "▼ 12k" or "steady"; empty with fewer than two readings. */
+export function trendText(history: Point[]): string {
+  if (history.length < 2) return ''
+  const delta = history[history.length - 1].tokens - history[history.length - 2].tokens
+  if (delta > 0) return `▲ +${shortTokens(delta)}`
+  if (delta < 0) return `▼ ${shortTokens(-delta)}`
+  return 'steady'
+}
+
+/** Tokens as "134.4k", "200k" or "1M". */
+export function shortTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n % 1_000_000 === 0 ? 0 : 1)}M`
+  if (n >= 1_000) return `${(n / 1_000).toFixed(n % 1_000 === 0 ? 0 : 1)}k`
+  return String(n)
+}
 
 export function isHot(percent: number | undefined): boolean {
   return percent !== undefined && percent > RED_AT
@@ -33,6 +69,8 @@ export function mergeReading(prev: Reading | null, usage: Pick<SessionUsage, 'co
   const week = usage.rateLimits.find(r => r.kind === 'seven_day')
   return {
     context: usage.context.percent,
+    contextTokens: usage.context.tokens,
+    contextWindow: usage.context.window,
     fiveHour: five ? five.percentUsed : prev?.fiveHour,
     fiveHourResetsAt: five ? five.resetsAt : prev?.fiveHourResetsAt,
     weekly: week ? week.percentUsed : prev?.weekly,
