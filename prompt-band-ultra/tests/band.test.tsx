@@ -1,0 +1,213 @@
+import { expect, mock, test } from 'claude-code/testing'
+
+const T0 = Date.parse('2026-10-16T10:00:00Z')
+const MIN = 60_000
+
+const band = (surface: 'terminal' | 'desktop', bodyColumns = 120) => ({
+  plugin: 'prompt-band-ultra',
+  surface,
+  component: 'AbovePrompt' as const,
+  props: {
+    hasSurvey: false,
+    isWorking: false,
+    maxRows: 10,
+    bodyColumns,
+    scroll: { offset: 0, bodyRows: 10 },
+    view: {},
+  },
+})
+
+const step = async ($: any, agentId?: string) => {
+  const stream = $.turn.step({ turnId: 't', index: 0, model: 'm', messageCount: 1, ...(agentId ? { agentId } : {}) })
+  for await (const _ of stream) {
+  }
+}
+
+test('usage on the left, cache countdown on the right, warns at 5 minutes, red when expired', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  mock.store(on)
+  const toasts: string[] = []
+  on('ui.toast', ($, e) => {
+    toasts.push(e.text)
+    return { value: undefined } as any
+  })
+  on('session.start', (_$, e) => ({ cwd: e.cwd }))
+  on('session.id', () => ({ value: 'session-1' }) as any)
+  on('session.usage', () => ({
+    value: {
+      startedAt: 0,
+      context: { window: 200000, tokens: 60000, percent: 30 },
+      rateLimits: [
+        { kind: 'five_hour', percentUsed: 85, resetsAt: '2026-10-16T11:30:00Z' },
+        { kind: 'seven_day', percentUsed: 12 },
+      ],
+    },
+  }))
+  on('ui.render', ($, e) => {
+    // Stands for another plugin's band beneath this one.
+    const { Text } = $.ui.resolve(e)
+    return <Text>beneath</Text>
+  })
+  on('ui.invalidate', () => ({ value: undefined }) as any)
+  on('ui.notify', () => ({ value: { isSent: false, reason: 'no-surface' } }) as any)
+  on('turn.step', async function* (_$, e) {
+    return { turnId: e.turnId, index: e.index, answer: '', toolUses: [], stopReason: 'end_turn', usage: null }
+  })
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const ui = await $.ui.mount(band(surface))
+    expect((await ui.find({ type: 'Text', text: /Cloudy/ }))?.text).toBe('☁ Cloudy 30%')
+    expect(await ui.find({ type: 'Text', text: ' 60k/200k' })).toBeDefined()
+    // An account not yet verified still reports a five-hour window: Ultra leaves it out.
+    expect(await ui.find({ type: 'Text', text: /5h/ })).toBeUndefined()
+    expect((await ui.find({ type: 'Text', text: /Week/ }))?.text).toBe('Week 12%')
+    expect(await ui.find({ text: /快取/ })).toBeUndefined()
+    expect(await ui.find({ type: 'Text', text: 'beneath' })).toBeDefined()
+    await ui.unmount()
+  }
+
+  await step($)
+  await clock.advance(10 * MIN)
+  // A subagent's request does not refresh the countdown.
+  await step($, 'agent-1')
+
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const wide = await $.ui.mount(band(surface, 120))
+    expect(await wide.find({ type: 'Text', text: '快取剩 50:00' })).toBeDefined()
+    expect((await wide.find({ type: 'Text', text: /Week/ }))?.text).toBe('Week 12%')
+    const wideTree = JSON.stringify(await wide.drawn())
+    expect(wideTree).toContain('space-between')
+    expect(wideTree).not.toContain('flex-end')
+    await wide.unmount()
+
+    const narrow = await $.ui.mount(band(surface, 40))
+    expect(await narrow.find({ type: 'Text', text: '快取剩 50:00' })).toBeDefined()
+    const narrowTree = JSON.stringify(await narrow.drawn())
+    expect(narrowTree).toContain('flex-end')
+    expect(narrowTree).not.toContain('space-between')
+    await narrow.unmount()
+  }
+
+  await clock.advance(45 * MIN + 1000)
+  expect(toasts.length).toBe(1)
+  expect(toasts[0]).toContain('5:00')
+  await clock.advance(30_000)
+  expect(toasts.length).toBe(1)
+
+  await clock.advance(5 * MIN)
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const ui = await $.ui.mount(band(surface))
+    expect(await ui.find({ type: 'Text', text: ' 快取已過期 ' })).toBeDefined()
+    expect(await ui.find({ text: /重新計算/ })).toBeUndefined()
+    expect(await ui.find({ type: 'Text', text: /Cloudy/ })).toBeDefined()
+    await ui.unmount()
+  }
+
+  // The next main-loop request starts a fresh hour.
+  await step($)
+  const ui = await $.ui.mount(band('desktop'))
+  expect(await ui.find({ type: 'Text', text: '快取剩 60:00' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: 'beneath' })).toBeDefined()
+  await ui.unmount()
+})
+
+test('Week keeps the last figure across sessions until a measurement brings a new one', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  // What an earlier session left in the store.
+  const store: Record<string, any> = {
+    lastLimits: { weekly: 12, weeklyResetsAt: '2026-10-20T00:00:00Z' },
+  }
+  on('store.get', (_$, e: any) => ({ value: store[e.key] }) as any)
+  on('store.set', (_$, e: any) => {
+    store[e.key] = e.value
+    return { value: undefined } as any
+  })
+  on('session.start', (_$, e) => ({ cwd: e.cwd }))
+  on('session.id', () => ({ value: 'session-2' }) as any)
+  // A new session before its first response: no rate limits yet.
+  on('session.usage', () => ({ value: { startedAt: 0, context: { window: 200000 }, rateLimits: [] } }))
+  on('session.measure', (_$, e) => ({ changed: e.changed }))
+  on('ui.render', ($, e) => {
+    const { Text } = $.ui.resolve(e)
+    return <Text>beneath</Text>
+  })
+  on('ui.invalidate', () => ({ value: undefined }) as any)
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+
+  let ui = await $.ui.mount(band('desktop'))
+  expect((await ui.find({ type: 'Text', text: /Context/ }))?.text).toBe('Context --')
+  expect((await ui.find({ type: 'Text', text: /Week/ }))?.text).toBe('Week 12%')
+  await ui.unmount()
+
+  // A measurement without rate limits leaves them alone.
+  await $.session.measure({ context: { window: 200000, tokens: 20000, percent: 10 }, rateLimits: [], changed: ['context'] })
+  ui = await $.ui.mount(band('desktop'))
+  expect((await ui.find({ type: 'Text', text: /Clear/ }))?.text).toBe('☀ Clear 10%')
+  expect((await ui.find({ type: 'Text', text: /Week/ }))?.text).toBe('Week 12%')
+  await ui.unmount()
+
+  await $.session.measure({
+    context: { window: 200000, tokens: 20000, percent: 10 },
+    rateLimits: [
+      { kind: 'five_hour', percentUsed: 47, resetsAt: '2026-10-16T11:30:00Z' },
+      { kind: 'seven_day', percentUsed: 13, resetsAt: '2026-10-16T11:30:00Z' },
+    ],
+    changed: ['rateLimits'],
+  })
+  ui = await $.ui.mount(band('desktop'))
+  expect(await ui.find({ type: 'Text', text: /5h/ })).toBeUndefined()
+  expect((await ui.find({ type: 'Text', text: /Week/ }))?.text).toBe('Week 13%')
+  await ui.unmount()
+  expect(store.lastLimits).toEqual({ weekly: 13, weeklyResetsAt: '2026-10-16T11:30:00Z' })
+
+  // Past the weekly reset the kept figure no longer holds.
+  await clock.advance(90 * MIN)
+  ui = await $.ui.mount(band('desktop'))
+  expect((await ui.find({ type: 'Text', text: /Week/ }))?.text).toBe('Week --')
+  await ui.unmount()
+})
+
+test('context reads as Token Weather: the last turn growth, no trend when narrow', async ($, on) => {
+  mock.clock(on, { now: T0 })
+  mock.store(on)
+  on('session.start', (_$, e) => ({ cwd: e.cwd }))
+  on('session.id', () => ({ value: 'session-3' }) as any)
+  on('session.usage', () => ({ value: { startedAt: 0, context: { window: 200000 }, rateLimits: [] } }))
+  on('session.measure', (_$, e) => ({ changed: e.changed }))
+  on('ui.render', ($, e) => {
+    const { Text } = $.ui.resolve(e)
+    return <Text>beneath</Text>
+  })
+  on('ui.invalidate', () => ({ value: undefined }) as any)
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+
+  const measure = (tokens: number, changed: ('context' | 'rateLimits')[] = ['context']) =>
+    $.session.measure({ context: { window: 200000, tokens, percent: (tokens / 200000) * 100 }, rateLimits: [], changed })
+
+  await measure(20000)
+  await measure(80000)
+  // A measurement for the limits alone adds no reading.
+  await measure(80000, ['rateLimits'])
+  await measure(160000)
+
+  let ui = await $.ui.mount(band('terminal', 120))
+  expect((await ui.find({ type: 'Text', text: /Storm/ }))?.text).toBe('☇ Storm 80%')
+  expect(await ui.find({ type: 'Text', text: ' 160k/200k' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /[▁▄█]/ })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: ' ▲ +80k' })).toBeDefined()
+  await ui.unmount()
+
+  ui = await $.ui.mount(band('terminal', 36))
+  expect(await ui.find({ type: 'Text', text: /Storm/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /▲/ })).toBeUndefined()
+  await ui.unmount()
+
+  await measure(190000)
+  ui = await $.ui.mount(band('terminal', 120))
+  expect((await ui.find({ type: 'Text', text: /Compact soon/ }))?.text).toBe('↯ Compact soon 95%')
+  await ui.unmount()
+})

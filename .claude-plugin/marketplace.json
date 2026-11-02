@@ -7,7 +7,13 @@
   "plugins": [
     {
       "name": "prompt-band",
-      "source": "./"
+      "description": "一般方案（Pro、Max）：Context、5 小時、每週用量，和快取倒數",
+      "source": "./prompt-band"
+    },
+    {
+      "name": "prompt-band-ultra",
+      "description": "Ultra 方案：沒有 5 小時限制，只顯示 Context、每週用量，和快取倒數",
+      "source": "./prompt-band-ultra"
     }
   ]
 }
