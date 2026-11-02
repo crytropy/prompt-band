@@ -19,11 +19,41 @@ Context 用天氣表示有多滿，後面是用掉的 token／整個視窗，和
 
 Context 的天氣顯示參考 Anthropic 的 [Token Weather](https://github.com/anthropics/claude-code-playground/tree/main/claude-code/mods/token-weather)（Apache-2.0）。
 
+## 兩個版本
+
+| 版本 | 給誰用 | 左邊顯示 |
+|---|---|---|
+| `prompt-band` | Pro、Max | Context、5 小時、每週 |
+| `prompt-band-ultra` | Ultra（沒有 5 小時限制） | Context、每週 |
+
+```text
+☂ Showers 67% 134.4k/200k ▲ +98.3k  ·  Week 12%     快取剩 52:13
+```
+
+Ultra 帳號在驗證完成前，用量裡還是會有 5 小時的數字；`prompt-band-ultra` 一律不顯示。
+
+兩個版本只能裝一個，同時啟用會畫出兩列。
+
 ## 安裝（本機）
+
+先加 marketplace：
 
 ```
 /plugin marketplace add crytropy/prompt-band
+```
+
+再開 `/plugin`，到 `prompt-band` marketplace 裡挑一個版本安裝。也可以直接下指令：
+
+```
 /plugin install prompt-band@prompt-band
+/plugin install prompt-band-ultra@prompt-band
+```
+
+從一般版換成 Ultra 版：
+
+```
+/plugin uninstall prompt-band@prompt-band
+/plugin install prompt-band-ultra@prompt-band
 ```
 
 要讓某個 repo 在本機開的 session 自動載入，在那個 repo 的 `.claude/settings.json` 加上：
@@ -54,7 +84,9 @@ Context 的天氣顯示參考 Anthropic 的 [Token Weather](https://github.com/a
 2. **Environment variables** 加上：
 
    ```
-   CLAUDE_CODE_PLUGIN_DIRS=/opt/prompt-band
+   CLAUDE_CODE_PLUGIN_DIRS=/opt/prompt-band/prompt-band
    ```
+
+   Ultra 版改成 `CLAUDE_CODE_PLUGIN_DIRS=/opt/prompt-band/prompt-band-ultra`。
 
 設定好後開一個新的雲端 session，看輸入框上方有沒有出現資訊列。
