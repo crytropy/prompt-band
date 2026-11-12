@@ -4,6 +4,9 @@ export type Limits = {
   fiveHourResetsAt?: string
   weekly?: number
   weeklyResetsAt?: string
+  /** Fable's own weekly window, from the account's usage endpoint. */
+  fable?: number
+  fableResetsAt?: string
 }
 
 export type Reading = Limits & {

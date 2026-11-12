@@ -75,16 +75,49 @@ export function mergeReading(prev: Reading | null, usage: Pick<SessionUsage, 'co
     fiveHourResetsAt: five ? five.resetsAt : prev?.fiveHourResetsAt,
     weekly: week ? week.percentUsed : prev?.weekly,
     weeklyResetsAt: week ? week.resetsAt : prev?.weeklyResetsAt,
+    // The session's usage has no per-model window: Fable comes from the usage endpoint alone.
+    fable: prev?.fable,
+    fableResetsAt: prev?.fableResetsAt,
   }
 }
 
 export function hasLimits(r: Reading | null | undefined): boolean {
-  return r?.fiveHour !== undefined || r?.weekly !== undefined
+  return r?.fiveHour !== undefined || r?.weekly !== undefined || r?.fable !== undefined
 }
 
 export function limitsOf(r: Reading): Limits {
-  const { fiveHour, fiveHourResetsAt, weekly, weeklyResetsAt } = r
-  return { fiveHour, fiveHourResetsAt, weekly, weeklyResetsAt }
+  const { fiveHour, fiveHourResetsAt, weekly, weeklyResetsAt, fable, fableResetsAt } = r
+  return { fiveHour, fiveHourResetsAt, weekly, weeklyResetsAt, fable, fableResetsAt }
+}
+
+/**
+ * A model's weekly window from the account's usage (`/api/oauth/usage`): its
+ * `weekly_scoped` entry in `limits` whose model is named `model`. `{}` when the
+ * account has no such window, null when the body is not usage.
+ */
+export function modelWeekly(body: string, model: string): { percent?: number; resetsAt?: string } | null {
+  let usage: unknown
+  try {
+    usage = JSON.parse(body)
+  } catch {
+    return null
+  }
+  if (usage === null || typeof usage !== 'object') return null
+  const limits = (usage as { limits?: unknown }).limits
+  if (!Array.isArray(limits)) return {}
+  const entry = limits.find(
+    (l: any) =>
+      l !== null &&
+      typeof l === 'object' &&
+      l.kind === 'weekly_scoped' &&
+      typeof l.scope?.model?.display_name === 'string' &&
+      l.scope.model.display_name.toLowerCase() === model.toLowerCase(),
+  ) as { percent?: unknown; resets_at?: unknown } | undefined
+  if (entry === undefined || typeof entry.percent !== 'number') return {}
+  const at = entry.resets_at
+  const resetsAt =
+    typeof at === 'number' ? new Date(at * 1000).toISOString() : typeof at === 'string' ? at : undefined
+  return { percent: entry.percent, ...(resetsAt !== undefined ? { resetsAt } : {}) }
 }
 
 /** A kept figure whose window has since reset no longer holds: drop it. */
@@ -94,6 +127,7 @@ export function current(r: Reading, now: number): Reading {
     ...r,
     ...(isPast(r.fiveHourResetsAt) ? { fiveHour: undefined, fiveHourResetsAt: undefined } : {}),
     ...(isPast(r.weeklyResetsAt) ? { weekly: undefined, weeklyResetsAt: undefined } : {}),
+    ...(isPast(r.fableResetsAt) ? { fable: undefined, fableResetsAt: undefined } : {}),
   }
 }
 

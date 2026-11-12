@@ -12,6 +12,7 @@ import {
   limitsOf,
   mergeReading,
   mmss,
+  modelWeekly,
   percentText,
   shortTokens,
   trendText,
@@ -22,7 +23,11 @@ const WARN_MS = 5 * 60 * 1000
 const STORE_KEY = 'lastSentBySession'
 const LIMITS_KEY = 'lastLimits'
 const KEEP_SESSIONS = 20
-const SEP = '  ·  '
+const SEP = '   ·   '
+// Fable's weekly window is not in the session's usage: read from the account's usage endpoint.
+const USAGE_URL = 'https://api.anthropic.com/api/oauth/usage'
+const FABLE = 'Fable'
+const FETCH_EVERY_MS = 5 * 60 * 1000
 
 const reading = atom({ plugin: 'prompt-band-ultra', key: 'reading' } as const, null as Reading | null)
 const lastSentAt = atom({ plugin: 'prompt-band-ultra', key: 'lastSentAt' } as const, null as Stamp)
@@ -52,6 +57,37 @@ async function record($: EngineInterface, context: SessionUsage['context'], isNe
   await update($, history, h => (isNewTurn || h.length === 0 ? addPoint(h, point) : h))
 }
 
+let fetchedAt: number | null = null
+
+// At most once every FETCH_EVERY_MS; a failed read keeps the last figure.
+async function fetchFable($: EngineInterface): Promise<void> {
+  const now = await $.clock.now()
+  if (fetchedAt !== null && now - fetchedAt < FETCH_EVERY_MS) return
+  fetchedAt = now
+  try {
+    const auth = await $.session.authorize()
+    if (auth === null) return
+    const res = await $.http.fetch(USAGE_URL, {
+      auth: auth.handle,
+      headers: { 'anthropic-beta': 'oauth-2025-04-20', 'Content-Type': 'application/json' },
+    })
+    if (!res.ok) return
+    const w = modelWeekly(res.text, FABLE)
+    if (w === null) return
+    const prev = await keptLimits($)
+    const next: Reading = {
+      ...(await read($, reading)),
+      ...(prev ? limitsOf(prev) : {}),
+      fable: w.percent,
+      fableResetsAt: w.resetsAt,
+    }
+    await update($, reading, () => next)
+    await $.store.set(LIMITS_KEY, limitsOf(next))
+  } catch {
+    // keep the last figure
+  }
+}
+
 async function refresh($: EngineInterface): Promise<void> {
   try {
     const usage = await $.session.usage()
@@ -75,6 +111,7 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const result = await next(e)
     await refresh($)
+    await fetchFable($)
 
     if ((await read($, lastSentAt)) === null) {
       const saved = ((await $.store.get(STORE_KEY)) ?? {}) as Record<string, number>
@@ -118,6 +155,7 @@ export const register: Register = on => {
     const result = await next(e)
     await apply($, e)
     if (e.changed.includes('context')) await record($, e.context, true)
+    await fetchFable($)
     return result
   })
 
@@ -150,17 +188,20 @@ export const register: Register = on => {
       const f = forecastFor(r.context)
       const parts: Part[] = [{ text: `${f.icon} ${f.word} ${percentText(r.context)}`, color: f.color, bold: true }]
       if (r.contextTokens !== undefined && r.contextWindow !== undefined) {
-        parts.push({ text: ` ${shortTokens(r.contextTokens)}/${shortTokens(r.contextWindow)}`, dim: true })
+        parts.push({ text: `  ${shortTokens(r.contextTokens)}/${shortTokens(r.contextWindow)}`, dim: true })
       }
       const trend = trendText(points)
-      if (withTrend && trend) parts.push({ text: ` ${trend}`, dim: true })
+      if (withTrend && trend) parts.push({ text: `  ${trend}`, dim: true })
       return parts
     }
     const limit = (text: string, percent: number | undefined): Part[] => [
       { text, color: isHot(percent) ? 'error' : undefined, dim: !isHot(percent) },
     ]
-    // Ultra has no five-hour limit: the week is the only one shown.
-    const limits = [limit(`Week ${percentText(r.weekly)}`, r.weekly)]
+    // Ultra has no five-hour limit. Fable's weekly window comes before the week, once the account reports one.
+    const limits = [
+      ...(r.fable !== undefined ? [limit(`${FABLE} ${percentText(r.fable)}`, r.fable)] : []),
+      limit(`Week ${percentText(r.weekly)}`, r.weekly),
+    ]
     const row = (groups: Part[][]): Part[] => groups.flatMap((g, n) => (n > 0 ? [{ text: SEP, dim: true }, ...g] : g))
     const textOf = (parts: Part[]) => parts.map(p => p.text).join('')
 

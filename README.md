@@ -1,13 +1,15 @@
 # prompt-band
 用量資訊列
 
-輸入框上方的一列資訊：左邊是用量（Context、5 小時、每週），右邊是主對話 1 小時快取的倒數。
+輸入框上方的一列資訊：左邊是用量（Context、5 小時、Fable 每週、每週），右邊是主對話 1 小時快取的倒數。
 
 ```text
-☂ Showers 67% 134.4k/200k ▲ +98.3k  ·  5h 30% (resets in 2h10m)  ·  Week 12%     快取剩 52:13
+☂ Showers 67%  134.4k/200k  ▲ +98.3k   ·   5h 30% (resets in 2h10m)   ·   Fable 23%   ·   Week 12%     快取剩 52:13
 ```
 
 Context 用天氣表示有多滿，後面是用掉的 token／整個視窗，和上一輪多用了多少（▲ 變多、▼ 變少）。終端機太窄時，▲ 那段會先藏起來。
+
+`Fable` 是 Fable 這個模型自己的每週用量。session 的用量資料裡沒有這個數字，所以外掛會用目前登入的帳號去讀 `/api/oauth/usage`（和 `/usage` 看到的是同一份），最多每 5 分鐘讀一次。帳號沒有 Fable 的每週額度、用的是 API key 或第三方供應商，這一段就不顯示。
 
 | 用量 | 天氣 |
 |---|---|
@@ -23,11 +25,11 @@ Context 的天氣顯示參考 Anthropic 的 [Token Weather](https://github.com/a
 
 | 版本 | 給誰用 | 左邊顯示 |
 |---|---|---|
-| `prompt-band` | Pro、Max | Context、5 小時、每週 |
-| `prompt-band-ultra` | Ultra（沒有 5 小時限制） | Context、每週 |
+| `prompt-band` | Pro、Max | Context、5 小時、Fable 每週、每週 |
+| `prompt-band-ultra` | Ultra（沒有 5 小時限制） | Context、Fable 每週、每週 |
 
 ```text
-☂ Showers 67% 134.4k/200k ▲ +98.3k  ·  Week 12%     快取剩 52:13
+☂ Showers 67%  134.4k/200k  ▲ +98.3k   ·   Fable 23%   ·   Week 12%     快取剩 52:13
 ```
 
 Ultra 帳號在驗證完成前，用量裡還是會有 5 小時的數字；`prompt-band-ultra` 一律不顯示。
