@@ -59,7 +59,7 @@ test('usage on the left, cache countdown on the right, warns at 5 minutes, red w
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount(band(surface))
     expect((await ui.find({ type: 'Text', text: /Cloudy/ }))?.text).toBe('☁ Cloudy 30%')
-    expect(await ui.find({ type: 'Text', text: ' 60k/200k' })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: '  60k/200k' })).toBeDefined()
     // An account not yet verified still reports a five-hour window: Ultra leaves it out.
     expect(await ui.find({ type: 'Text', text: /5h/ })).toBeUndefined()
     expect((await ui.find({ type: 'Text', text: /Week/ }))?.text).toBe('Week 12%')
@@ -196,9 +196,9 @@ test('context reads as Token Weather: the last turn growth, no trend when narrow
 
   let ui = await $.ui.mount(band('terminal', 120))
   expect((await ui.find({ type: 'Text', text: /Storm/ }))?.text).toBe('☇ Storm 80%')
-  expect(await ui.find({ type: 'Text', text: ' 160k/200k' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '  160k/200k' })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /[▁▄█]/ })).toBeUndefined()
-  expect(await ui.find({ type: 'Text', text: ' ▲ +80k' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '  ▲ +80k' })).toBeDefined()
   await ui.unmount()
 
   ui = await $.ui.mount(band('terminal', 36))
@@ -209,5 +209,83 @@ test('context reads as Token Weather: the last turn growth, no trend when narrow
   await measure(190000)
   ui = await $.ui.mount(band('terminal', 120))
   expect((await ui.find({ type: 'Text', text: /Compact soon/ }))?.text).toBe('↯ Compact soon 95%')
+  await ui.unmount()
+})
+
+test('Fable weekly comes before Week, read from the usage endpoint at most every five minutes', async ($, on) => {
+  const clock = mock.clock(on, { now: T0 })
+  const store: Record<string, any> = {}
+  on('store.get', (_$, e: any) => ({ value: store[e.key] }) as any)
+  on('store.set', (_$, e: any) => {
+    store[e.key] = e.value
+    return { value: undefined } as any
+  })
+  on('session.start', (_$, e) => ({ cwd: e.cwd }))
+  on('session.id', () => ({ value: 'session-4' }) as any)
+  on('session.usage', () => ({
+    value: { startedAt: 0, context: { window: 1000000, tokens: 540200, percent: 54 }, rateLimits: [{ kind: 'seven_day', percentUsed: 47 }] },
+  }))
+  on('session.measure', (_$, e) => ({ changed: e.changed }))
+  on('session.authorize', () => ({ value: { handle: 'h', kind: 'bearer' } }) as any)
+  let fable = 23
+  const fetched: { url: string; init: any }[] = []
+  on('http.fetch', (_$, e: any) => {
+    fetched.push(e)
+    const text = JSON.stringify({ limits: [{ kind: 'weekly_scoped', scope: { model: { display_name: 'Fable' } }, percent: fable, resets_at: '2026-10-20T00:00:00Z' }] })
+    return { value: { status: 200, ok: true, headers: {}, text } } as any
+  })
+  on('ui.render', ($, e) => {
+    const { Text } = $.ui.resolve(e)
+    return <Text>beneath</Text>
+  })
+  on('ui.invalidate', () => ({ value: undefined }) as any)
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  expect(fetched.length).toBe(1)
+  expect(fetched[0].url).toBe('https://api.anthropic.com/api/oauth/usage')
+  expect(fetched[0].init.auth).toBe('h')
+
+  let ui = await $.ui.mount(band('terminal', 120))
+  expect((await ui.find({ type: 'Text', text: /Fable/ }))?.text).toBe('Fable 23%')
+  const texts = JSON.stringify(await ui.drawn())
+  expect(texts.indexOf('Fable 23%')).toBeLessThan(texts.indexOf('Week 47%'))
+  await ui.unmount()
+  expect(store.lastLimits.fable).toBe(23)
+
+  // A measurement within five minutes does not ask again.
+  fable = 30
+  const measure = () =>
+    $.session.measure({ context: { window: 1000000, tokens: 540200, percent: 54 }, rateLimits: [{ kind: 'seven_day', percentUsed: 47 }], changed: ['rateLimits'] })
+  await measure()
+  expect(fetched.length).toBe(1)
+  ui = await $.ui.mount(band('terminal', 120))
+  expect((await ui.find({ type: 'Text', text: /Fable/ }))?.text).toBe('Fable 23%')
+  await ui.unmount()
+
+  await clock.advance(5 * MIN)
+  await measure()
+  expect(fetched.length).toBe(2)
+  ui = await $.ui.mount(band('terminal', 120))
+  expect((await ui.find({ type: 'Text', text: /Fable/ }))?.text).toBe('Fable 30%')
+  await ui.unmount()
+})
+
+test('no Fable window: no Fable group', async ($, on) => {
+  mock.clock(on, { now: T0 })
+  mock.store(on)
+  on('session.start', (_$, e) => ({ cwd: e.cwd }))
+  on('session.id', () => ({ value: 'session-5' }) as any)
+  on('session.usage', () => ({ value: { startedAt: 0, context: { window: 200000 }, rateLimits: [{ kind: 'seven_day', percentUsed: 12 }] } }))
+  on('session.authorize', () => ({ value: null }) as any)
+  on('ui.render', ($, e) => {
+    const { Text } = $.ui.resolve(e)
+    return <Text>beneath</Text>
+  })
+  on('ui.invalidate', () => ({ value: undefined }) as any)
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const ui = await $.ui.mount(band('terminal', 120))
+  expect(await ui.find({ type: 'Text', text: /Fable/ })).toBeUndefined()
+  expect((await ui.find({ type: 'Text', text: /Week/ }))?.text).toBe('Week 12%')
   await ui.unmount()
 })

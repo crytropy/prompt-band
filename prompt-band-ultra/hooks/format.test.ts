@@ -10,6 +10,7 @@ import {
   isHot,
   mergeReading,
   mmss,
+  modelWeekly,
   percentText,
   shortTokens,
   trendText,
@@ -88,4 +89,19 @@ test('Token Weather: forecast bands, trend, short tokens', async () => {
   expect(shortTokens(200000)).toBe('200k')
   expect(shortTokens(1000000)).toBe('1M')
   expect(shortTokens(512)).toBe('512')
+})
+
+test('Fable weekly window from the usage endpoint', async () => {
+  const body = JSON.stringify({
+    seven_day: { utilization: 47, resets_at: '2026-11-16T00:00:00Z' },
+    limits: [
+      { kind: 'weekly_scoped', scope: { model: { display_name: 'Opus' } }, percent: 10, resets_at: 1763251200 },
+      { kind: 'weekly_scoped', scope: { model: { display_name: 'Fable' } }, percent: 23.5, resets_at: 1763251200 },
+    ],
+  })
+  expect(modelWeekly(body, 'Fable')).toEqual({ percent: 23.5, resetsAt: '2025-11-16T00:00:00.000Z' })
+  expect(modelWeekly(JSON.stringify({ limits: [{ kind: 'weekly_scoped', scope: { model: { display_name: 'fable' } }, percent: 5, resets_at: '2026-11-16T00:00:00Z' }] }), 'Fable')).toEqual({ percent: 5, resetsAt: '2026-11-16T00:00:00Z' })
+  expect(modelWeekly(JSON.stringify({ seven_day: {} }), 'Fable')).toEqual({})
+  expect(modelWeekly(JSON.stringify({ limits: [] }), 'Fable')).toEqual({})
+  expect(modelWeekly('not json', 'Fable')).toBeNull()
 })
