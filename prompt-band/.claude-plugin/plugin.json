@@ -1,8 +1,8 @@
 {
   "name": "prompt-band",
   "displayName": "輸入框資訊列",
-  "version": "0.2.0",
-  "description": "輸入框上方的一列資訊：左邊是用量（Context 用 Token Weather 天氣顯示、5 小時、Fable 每週、每週），右邊是主對話 1 小時快取的倒數。",
+  "version": "0.3.0",
+  "description": "輸入框上方的一列資訊：左邊是用量（Context 用 Token Weather 天氣顯示、5 小時、Fable 每週、每週），右邊是目前分支的 PR 狀態（可點開）和主對話 1 小時快取的倒數。",
   "author": {
     "name": "crytropy"
   },

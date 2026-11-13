@@ -1,8 +1,9 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, SessionUsage } from 'claude-code'
 
-import type { Point, Reading, Stamp } from '../types'
+import type { Point, Pr, Reading, Stamp } from '../types'
 import {
+  PR_MARK,
   addPoint,
   cellWidth,
   current,
@@ -14,6 +15,8 @@ import {
   mmss,
   modelWeekly,
   percentText,
+  prStatus,
+  prText,
   shortTokens,
   trendText,
   untilText,
@@ -29,11 +32,18 @@ const SEP = '   ·   '
 const USAGE_URL = 'https://api.anthropic.com/api/oauth/usage'
 const FABLE = 'Fable'
 const FETCH_EVERY_MS = 5 * 60 * 1000
+const RED_MS = 60 * 1000
+// The current branch's pull request, as `gh` reports it.
+const PR_ARGV = ['gh', 'pr', 'view', '--json', 'number,url,state,isDraft,mergeable,mergeStateStatus,statusCheckRollup']
+const PR_EVERY_MS = 60 * 1000
+const PR_IDLE_MS = 5 * 60 * 1000
+const PR_TIMEOUT_MS = 15 * 1000
 
 const reading = atom({ plugin: 'prompt-band', key: 'reading' } as const, null as Reading | null)
 const lastSentAt = atom({ plugin: 'prompt-band', key: 'lastSentAt' } as const, null as Stamp)
 const warnedFor = atom({ plugin: 'prompt-band', key: 'warnedFor' } as const, null as Stamp)
 const history = atom({ plugin: 'prompt-band', key: 'history' } as const, [] as Point[])
+const pr = atom({ plugin: 'prompt-band', key: 'pr' } as const, null as Pr | null)
 
 /** A piece of the usage row: its text and how it is painted. */
 type Part = { text: string; color?: string; dim?: boolean; bold?: boolean }
@@ -89,6 +99,29 @@ async function fetchFable($: EngineInterface): Promise<void> {
   }
 }
 
+let prFetchedAt: number | null = null
+
+// The current branch's pull request, asked of `gh`: a turn asks again after PR_EVERY_MS;
+// the clock after PR_IDLE_MS, or after PR_EVERY_MS while its checks run.
+async function fetchPr($: EngineInterface, isTurn: boolean): Promise<void> {
+  const now = await $.clock.now()
+  if (prFetchedAt !== null) {
+    const isSoon = isTurn || (await read($, pr))?.kind === 'running'
+    if (now - prFetchedAt < (isSoon ? PR_EVERY_MS : PR_IDLE_MS)) return
+  }
+  prFetchedAt = now
+  let next: Pr | null
+  try {
+    const { exitCode, stdout } = await $.process.run(PR_ARGV, { timeoutMs: PR_TIMEOUT_MS })
+    // No pull request for the branch, no repository, not signed in: nothing to draw.
+    next = exitCode === 0 ? prStatus(stdout) : null
+  } catch {
+    // `gh` is not installed or did not answer: keep the last one
+    return
+  }
+  await update($, pr, () => next)
+}
+
 async function refresh($: EngineInterface): Promise<void> {
   try {
     const usage = await $.session.usage()
@@ -113,6 +146,7 @@ export const register: Register = on => {
     const result = await next(e)
     await refresh($)
     await fetchFable($)
+    await fetchPr($, true)
 
     if ((await read($, lastSentAt)) === null) {
       const saved = ((await $.store.get(STORE_KEY)) ?? {}) as Record<string, number>
@@ -124,17 +158,19 @@ export const register: Register = on => {
 
     $.clock.every(1000, async () => {
       const sent = await read($, lastSentAt)
-      if (sent === null) return
+      if (sent !== null) {
+        const left = sent + TTL_MS - (await $.clock.now())
+        if (left > 0 && left <= WARN_MS && (await read($, warnedFor)) !== sent) {
+          await update($, warnedFor, () => sent)
+          const text = `主對話的快取剩 ${mmss(left)} 就過期，要續命就趁現在送一句`
+          $.ui.toast(text)
+          $.ui.notify(text, { title: 'Prompt cache' }).catch(() => undefined)
+        }
 
-      const left = sent + TTL_MS - (await $.clock.now())
-      if (left > 0 && left <= WARN_MS && (await read($, warnedFor)) !== sent) {
-        await update($, warnedFor, () => sent)
-        const text = `主對話的快取剩 ${mmss(left)} 就過期，要續命就趁現在送一句`
-        $.ui.toast(text)
-        $.ui.notify(text, { title: 'Prompt cache' }).catch(() => undefined)
+        $.ui.invalidate('ui.render')
       }
 
-      $.ui.invalidate('ui.render')
+      await fetchPr($, false)
     })
 
     return result
@@ -157,6 +193,7 @@ export const register: Register = on => {
     await apply($, e)
     if (e.changed.includes('context')) await record($, e.context, true)
     await fetchFable($)
+    await fetchPr($, true)
     return result
   })
 
@@ -176,7 +213,7 @@ export const register: Register = on => {
       return next(e)
     }
 
-    const { Box, Text } = $.ui.resolve(e)
+    const { Box, Text, Link } = $.ui.resolve(e)
 
     // Left: usage.
     const now = await $.clock.now()
@@ -218,41 +255,52 @@ export const register: Register = on => {
       </Text>
     ))
 
-    // Right: the cache countdown, once the main loop has sent a request.
-    const sent = await read($, lastSentAt)
-    let cacheText = ''
-    let cache = null
-    if (sent !== null) {
-      const left = sent + TTL_MS - (await $.clock.now())
-      if (left <= 0) {
-        const cell = ' 快取已過期 '
-        cacheText = cell
-        cache = [
-          <Text key="cell" backgroundColor="error" color="inverseText" weight="bold">
-            {cell}
-          </Text>,
-        ]
-      } else {
-        const isNear = left <= WARN_MS
-        const cell = `快取剩 ${mmss(left)}`
-        const note = isNear ? ' · 快過期了，要續命就趁現在送一句' : ''
-        cacheText = cell + note
-        cache = [
-          <Text key="cell" color={isNear ? 'warning' : 'subtle'} weight={isNear ? 'bold' : 'regular'}>
-            {cell}
-          </Text>,
-          ...(isNear
-            ? [
-                <Text key="note" color="warning">
-                  {note}
-                </Text>,
-              ]
-            : []),
-        ]
-      }
+    // Right: the branch's pull request, a link to its page, then the cache countdown.
+    const side: { text: string; node: unknown }[] = []
+    const open = await read($, pr)
+    if (open !== null) {
+      const text = prText(open)
+      side.push({
+        text,
+        node: (
+          <Link key="pr" href={open.url}>
+            <Text color={PR_MARK[open.kind].color}>{text}</Text>
+          </Link>
+        ),
+      })
     }
+    // The countdown, once the main loop has sent a request: the time alone, yellow in the
+    // last five minutes, red in the last one and once it has run out, where it stays 00:00.
+    const sent = await read($, lastSentAt)
+    if (sent !== null) {
+      const left = sent + TTL_MS - now
+      const text = mmss(left)
+      const color = left <= RED_MS ? 'error' : left <= WARN_MS ? 'warning' : 'subtle'
+      side.push({
+        text,
+        node: (
+          <Text key="cache" color={color} weight={left <= WARN_MS ? 'bold' : 'regular'}>
+            {text}
+          </Text>
+        ),
+      })
+    }
+    const sideText = side.map(p => p.text).join(SEP)
+    const cache =
+      side.length === 0
+        ? null
+        : side.flatMap((p, n) =>
+            n > 0
+              ? [
+                  <Text key={`s${n}`} dimColor>
+                    {SEP}
+                  </Text>,
+                  p.node,
+                ]
+              : [p.node],
+          )
 
-    const fits = cache === null || cellWidth(usageText) + 2 + cellWidth(cacheText) <= e.props.bodyColumns
+    const fits = cache === null || cellWidth(usageText) + 2 + cellWidth(sideText) <= e.props.bodyColumns
 
     const band = fits ? (
       <Box key="row" flexDirection="row" justifyContent="space-between">

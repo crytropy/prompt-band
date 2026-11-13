@@ -12,6 +12,8 @@ import {
   mmss,
   modelWeekly,
   percentText,
+  prStatus,
+  prText,
   shortTokens,
   trendText,
   untilText,
@@ -67,8 +69,11 @@ test('a kept figure is dropped once its window has reset', async () => {
 
 test('countdown text rounds up to the second', async () => {
   expect(mmss(60 * 60 * 1000)).toBe('60:00')
-  expect(mmss(5 * 60 * 1000 - 1)).toBe('5:00')
-  expect(mmss(61_001)).toBe('1:02')
+  expect(mmss(5 * 60 * 1000 - 1)).toBe('05:00')
+  expect(mmss(61_001)).toBe('01:02')
+  // Run out, it stays at zero.
+  expect(mmss(0)).toBe('00:00')
+  expect(mmss(-90_000)).toBe('00:00')
 })
 
 test('CJK characters take two cells', async () => {
@@ -114,4 +119,34 @@ test('Fable weekly window from the usage endpoint', async () => {
   expect(modelWeekly(JSON.stringify({ seven_day: {} }), 'Fable')).toEqual({})
   expect(modelWeekly(JSON.stringify({ limits: [] }), 'Fable')).toEqual({})
   expect(modelWeekly('not json', 'Fable')).toBeNull()
+})
+
+test('pull request from gh: checks running, ready to merge, merged, nothing otherwise', async () => {
+  const url = 'https://github.com/acme/app/pull/12'
+  const view = { number: 12, url, state: 'OPEN', isDraft: false, mergeable: 'MERGEABLE', mergeStateStatus: 'CLEAN' }
+  const run = (status: string, conclusion: string) => ({ __typename: 'CheckRun', status, conclusion })
+  const status = (state: string) => ({ __typename: 'StatusContext', state })
+  const of = (pr: object) => prStatus(JSON.stringify(pr))
+
+  expect(of({ ...view, statusCheckRollup: [run('COMPLETED', 'SUCCESS'), run('QUEUED', '')] })).toEqual({ kind: 'running', number: 12, url })
+  expect(of({ ...view, statusCheckRollup: [status('PENDING')] })).toEqual({ kind: 'running', number: 12, url })
+  expect(of({ ...view, statusCheckRollup: [run('COMPLETED', 'SUCCESS'), run('COMPLETED', 'SKIPPED'), status('SUCCESS')] })).toEqual({ kind: 'ready', number: 12, url })
+  // No checks at all: none is failing.
+  expect(of({ ...view, statusCheckRollup: [] })).toEqual({ kind: 'ready', number: 12, url })
+  expect(of({ ...view, state: 'MERGED', mergeable: 'UNKNOWN', statusCheckRollup: [run('COMPLETED', 'FAILURE')] })).toEqual({ kind: 'merged', number: 12, url })
+
+  expect(of({ ...view, statusCheckRollup: [run('COMPLETED', 'FAILURE')] })).toBeNull()
+  expect(of({ ...view, statusCheckRollup: [status('ERROR')] })).toBeNull()
+  expect(of({ ...view, mergeable: 'CONFLICTING', mergeStateStatus: 'DIRTY', statusCheckRollup: [] })).toBeNull()
+  expect(of({ ...view, mergeStateStatus: 'BLOCKED', statusCheckRollup: [] })).toBeNull()
+  expect(of({ ...view, isDraft: true, statusCheckRollup: [run('IN_PROGRESS', '')] })).toBeNull()
+  expect(of({ ...view, state: 'CLOSED', statusCheckRollup: [] })).toBeNull()
+  // Not a pull request, or a link that is not a web page.
+  expect(prStatus('no pull requests found')).toBeNull()
+  expect(of({ ...view, url: 'javascript:alert(1)' })).toBeNull()
+  expect(of({ state: 'OPEN' })).toBeNull()
+
+  expect(prText({ kind: 'running', number: 12, url })).toBe('◐ PR #12')
+  expect(prText({ kind: 'ready', number: 12, url })).toBe('✓ PR #12')
+  expect(prText({ kind: 'merged', number: 7, url })).toBe('● PR #7')
 })
