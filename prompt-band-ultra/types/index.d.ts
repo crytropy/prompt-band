@@ -22,6 +22,15 @@ export type Point = {
 /** Milliseconds since the epoch, or null before the first main-loop request. */
 export type Stamp = number | null
 
+/** The current branch's pull request, in one of the three states the band draws. */
+export type Pr = {
+  /** Its checks are still running; they passed and it can be merged; it is merged. */
+  kind: 'running' | 'ready' | 'merged'
+  number: number
+  /** Its page on GitHub: what a click on it opens. */
+  url: string
+}
+
 declare module 'claude-code' {
   interface PluginState {
     'prompt-band-ultra': {
@@ -32,6 +41,8 @@ declare module 'claude-code' {
       lastSentAt: Stamp
       /** The `lastSentAt` the five-minute warning was already raised for. */
       warnedFor: Stamp
+      /** The current branch's pull request; null with none to draw. */
+      pr: Pr | null
     }
   }
 }

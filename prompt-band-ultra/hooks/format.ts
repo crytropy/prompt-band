@@ -1,6 +1,6 @@
 import type { SessionUsage } from 'claude-code'
 
-import type { Limits, Point, Reading } from '../types'
+import type { Limits, Point, Pr, Reading } from '../types'
 
 export const RED_AT = 80
 export const HISTORY = 12
@@ -116,12 +116,59 @@ export function current(r: Reading, now: number): Reading {
   }
 }
 
-/** Milliseconds as "52:13", rounded up to the second. */
+/** Milliseconds as "52:13" or "04:59", rounded up to the second; a time that has run out stays "00:00". */
 export function mmss(ms: number): string {
-  const total = Math.ceil(ms / 1000)
+  const total = Math.max(0, Math.ceil(ms / 1000))
   const m = Math.floor(total / 60)
   const s = total % 60
-  return `${m}:${String(s).padStart(2, '0')}`
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+}
+
+// The three pull-request states the band draws; any other draws nothing.
+export const PR_MARK = {
+  running: { icon: '◐', color: 'warning' },
+  ready: { icon: '✓', color: 'success' },
+  merged: { icon: '●', color: 'merged' },
+} as const
+
+/** A pull request as the band names it: "✓ PR #12". */
+export function prText(pr: Pr): string {
+  return `${PR_MARK[pr.kind].icon} PR #${pr.number}`
+}
+
+// A check that is not one of these has failed.
+const PASSED = ['SUCCESS', 'NEUTRAL', 'SKIPPED']
+// GitHub will not merge a pull request in one of these states.
+const BLOCKED = ['BLOCKED', 'DIRTY', 'DRAFT', 'BEHIND']
+
+/**
+ * The current branch's pull request from `gh pr view --json
+ * number,url,state,isDraft,mergeable,mergeStateStatus,statusCheckRollup`:
+ * merged, its checks still running, or its checks passed and mergeable (a pull
+ * request with no checks has none failing). Null for any other state (a draft,
+ * a failed check, a conflict, closed) and for a body that is no pull request.
+ */
+export function prStatus(body: string): Pr | null {
+  let pr: any
+  try {
+    pr = JSON.parse(body)
+  } catch {
+    return null
+  }
+  if (pr === null || typeof pr !== 'object') return null
+  const { number, url } = pr
+  if (!Number.isInteger(number) || typeof url !== 'string' || !url.startsWith('https://')) return null
+  if (pr.state === 'MERGED') return { kind: 'merged', number, url }
+  if (pr.state !== 'OPEN' || pr.isDraft === true) return null
+
+  // A check run has a status and a conclusion; a commit status has a state alone.
+  const checks: any[] = Array.isArray(pr.statusCheckRollup) ? pr.statusCheckRollup.filter((c: unknown) => c !== null && typeof c === 'object') : []
+  const isRunning = (c: any) => (typeof c.status === 'string' ? c.status !== 'COMPLETED' : c.state === 'PENDING' || c.state === 'EXPECTED')
+  const hasPassed = (c: any) => PASSED.includes(typeof c.status === 'string' ? c.conclusion : c.state)
+  if (checks.some(isRunning)) return { kind: 'running', number, url }
+  if (!checks.every(hasPassed)) return null
+  if (pr.mergeable !== 'MERGEABLE' || BLOCKED.includes(pr.mergeStateStatus)) return null
+  return { kind: 'ready', number, url }
 }
 
 /** Terminal cells a text takes: CJK and full-width characters take two. */
