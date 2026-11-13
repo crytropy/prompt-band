@@ -1,19 +1,19 @@
 {
-  "name": "prompt-band",
+  "name": "windsock-mod",
   "owner": {
     "name": "crytropy"
   },
   "description": "輸入框上方的用量、PR 狀態與快取倒數資訊列",
   "plugins": [
     {
-      "name": "prompt-band",
+      "name": "windsock-mod",
       "description": "一般方案（Pro、Max）：Context、5 小時、Fable 每週、每週用量，PR 狀態和快取倒數",
-      "source": "./prompt-band"
+      "source": "./windsock-mod"
     },
     {
-      "name": "prompt-band-ultra",
+      "name": "windsock-mod-ultra",
       "description": "Ultra 方案：沒有 5 小時限制，只顯示 Context、Fable 每週、每週用量，PR 狀態和快取倒數",
-      "source": "./prompt-band-ultra"
+      "source": "./windsock-mod-ultra"
     }
   ]
 }

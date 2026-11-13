@@ -39,11 +39,11 @@ const PR_EVERY_MS = 60 * 1000
 const PR_IDLE_MS = 5 * 60 * 1000
 const PR_TIMEOUT_MS = 15 * 1000
 
-const reading = atom({ plugin: 'prompt-band', key: 'reading' } as const, null as Reading | null)
-const lastSentAt = atom({ plugin: 'prompt-band', key: 'lastSentAt' } as const, null as Stamp)
-const warnedFor = atom({ plugin: 'prompt-band', key: 'warnedFor' } as const, null as Stamp)
-const history = atom({ plugin: 'prompt-band', key: 'history' } as const, [] as Point[])
-const pr = atom({ plugin: 'prompt-band', key: 'pr' } as const, null as Pr | null)
+const reading = atom({ plugin: 'windsock-mod', key: 'reading' } as const, null as Reading | null)
+const lastSentAt = atom({ plugin: 'windsock-mod', key: 'lastSentAt' } as const, null as Stamp)
+const warnedFor = atom({ plugin: 'windsock-mod', key: 'warnedFor' } as const, null as Stamp)
+const history = atom({ plugin: 'windsock-mod', key: 'history' } as const, [] as Point[])
+const pr = atom({ plugin: 'windsock-mod', key: 'pr' } as const, null as Pr | null)
 
 /** A piece of the usage row: its text and how it is painted. */
 type Part = { text: string; color?: string; dim?: boolean; bold?: boolean }
