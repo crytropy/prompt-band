@@ -1,7 +1,5 @@
-/** The account's rate-limit windows: the same in every session, so kept across sessions. */
+/** The account's weekly rate-limit window: the same in every session, so kept across sessions. */
 export type Limits = {
-  fiveHour?: number
-  fiveHourResetsAt?: string
   weekly?: number
   weeklyResetsAt?: string
   /** Fable's own weekly window, from the account's usage endpoint. */
@@ -35,7 +33,7 @@ export type Pr = {
 
 declare module 'claude-code' {
   interface PluginState {
-    'prompt-band': {
+    'windsock-mod-ultra': {
       reading: Reading | null
       /** The last turns' context readings, oldest first. */
       history: Point[]

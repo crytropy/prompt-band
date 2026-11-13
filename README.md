@@ -1,4 +1,4 @@
-# prompt-band
+# windsock-mod
 用量資訊列
 
 輸入框上方的一列資訊：左邊是用量（Context、5 小時、Fable 每週、每週），右邊是目前分支的 PR 狀態，和主對話 1 小時快取的倒數。
@@ -50,8 +50,8 @@ Context 的天氣顯示參考 Anthropic 的 [Token Weather](https://github.com/a
 
 | 版本 | 給誰用 | 左邊顯示 |
 |---|---|---|
-| `prompt-band` | Pro、Max | Context、5 小時、Fable 每週、每週 |
-| `prompt-band-ultra` | Ultra（沒有 5 小時限制） | Context、Fable 每週、每週 |
+| `windsock-mod` | Pro、Max | Context、5 小時、Fable 每週、每週 |
+| `windsock-mod-ultra` | Ultra（沒有 5 小時限制） | Context、Fable 每週、每週 |
 
 右邊的 PR 狀態和快取倒數，兩個版本都一樣。
 
@@ -59,7 +59,7 @@ Context 的天氣顯示參考 Anthropic 的 [Token Weather](https://github.com/a
 ☂ Showers 67%  134.4k/200k  ▲ +98.3k   ·   Fable 23%   ·   Week 12%     ✓ PR #12   ·   52:13
 ```
 
-Ultra 帳號在驗證完成前，用量裡還是會有 5 小時的數字；`prompt-band-ultra` 一律不顯示。
+Ultra 帳號在驗證完成前，用量裡還是會有 5 小時的數字；`windsock-mod-ultra` 一律不顯示。
 
 兩個版本只能裝一個，同時啟用會畫出兩列。
 
@@ -68,21 +68,21 @@ Ultra 帳號在驗證完成前，用量裡還是會有 5 小時的數字；`prom
 先加 marketplace：
 
 ```
-/plugin marketplace add crytropy/prompt-band
+/plugin marketplace add crytropy/windsock-mod
 ```
 
-再開 `/plugin`，到 `prompt-band` marketplace 裡挑一個版本安裝。也可以直接下指令：
+再開 `/plugin`，到 `windsock-mod` marketplace 裡挑一個版本安裝。也可以直接下指令：
 
 ```
-/plugin install prompt-band@prompt-band
-/plugin install prompt-band-ultra@prompt-band
+/plugin install windsock-mod@windsock-mod
+/plugin install windsock-mod-ultra@windsock-mod
 ```
 
 從一般版換成 Ultra 版：
 
 ```
-/plugin uninstall prompt-band@prompt-band
-/plugin install prompt-band-ultra@prompt-band
+/plugin uninstall windsock-mod@windsock-mod
+/plugin install windsock-mod-ultra@windsock-mod
 ```
 
 要讓某個 repo 在本機開的 session 自動載入，在那個 repo 的 `.claude/settings.json` 加上：
@@ -90,9 +90,9 @@ Ultra 帳號在驗證完成前，用量裡還是會有 5 小時的數字；`prom
 ```json
 {
   "extraKnownMarketplaces": {
-    "prompt-band": { "source": { "source": "github", "repo": "crytropy/prompt-band" } }
+    "windsock-mod": { "source": { "source": "github", "repo": "crytropy/windsock-mod" } }
   },
-  "enabledPlugins": { "prompt-band@prompt-band": true }
+  "enabledPlugins": { "windsock-mod@windsock-mod": true }
 }
 ```
 
@@ -107,15 +107,15 @@ Ultra 帳號在驗證完成前，用量裡還是會有 5 小時的數字；`prom
 1. **Setup script** 加上：
 
    ```bash
-   git clone --depth 1 https://github.com/crytropy/prompt-band /opt/prompt-band
+   git clone --depth 1 https://github.com/crytropy/windsock-mod /opt/windsock-mod
    ```
 
 2. **Environment variables** 加上：
 
    ```
-   CLAUDE_CODE_PLUGIN_DIRS=/opt/prompt-band/prompt-band
+   CLAUDE_CODE_PLUGIN_DIRS=/opt/windsock-mod/windsock-mod
    ```
 
-   Ultra 版改成 `CLAUDE_CODE_PLUGIN_DIRS=/opt/prompt-band/prompt-band-ultra`。
+   Ultra 版改成 `CLAUDE_CODE_PLUGIN_DIRS=/opt/windsock-mod/windsock-mod-ultra`。
 
 設定好後開一個新的雲端 session，看輸入框上方有沒有出現資訊列。

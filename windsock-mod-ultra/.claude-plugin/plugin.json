@@ -1,0 +1,10 @@
+{
+  "name": "windsock-mod-ultra",
+  "displayName": "輸入框資訊列（Ultra）",
+  "version": "0.3.0",
+  "description": "Ultra 方案用的 windsock-mod：沒有 5 小時限制，只顯示 Context（Token Weather）、Fable 每週、每週用量，目前分支的 PR 狀態（可點開），和主對話 1 小時快取的倒數。不要和 windsock-mod 一起啟用。",
+  "author": {
+    "name": "crytropy"
+  },
+  "types": "./types/index.d.ts"
+}

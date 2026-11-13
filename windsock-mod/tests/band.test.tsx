@@ -4,7 +4,7 @@ const T0 = Date.parse('2026-10-16T10:00:00Z')
 const MIN = 60_000
 
 const band = (surface: 'terminal' | 'desktop', bodyColumns = 120) => ({
-  plugin: 'prompt-band',
+  plugin: 'windsock-mod',
   surface,
   component: 'AbovePrompt' as const,
   props: {
